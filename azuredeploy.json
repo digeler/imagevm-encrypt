@@ -1,0 +1,236 @@
+﻿{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "storageAccountResourceGroup": {
+      "type": "string",
+      "defaultValue": "kube",
+      "metadata": {
+        "description": "ResourceGroup"
+      }
+    },
+    "vmAdminUserName": {
+      "type": "securestring",
+      "defaultValue": "dinor",
+      "metadata": {
+        "description": "Local admin account user name"
+      }
+    },
+    "vmAdminPassword": {
+      "type": "securestring",
+      "defaultValue": "Corp123!!!!!",
+      "metadata": {
+        "description": "Local admin account password"
+      }
+    },
+    "resourceLocation": {
+      "type": "string",
+      "defaultValue": "north europe",
+      "metadata": {
+        "description": "Location of resource (East US or West US)"
+      }
+    },
+    "aadClientID": {
+      "type": "string",
+      "defaultValue": "f0e3b718-fb05-46a2-9f99-d2beebe72f2b",
+      "metadata": {
+        "description": "appid"
+      }
+    },
+    "aadClientSecret": {
+      "type": "string",
+      "defaultValue": "*****",
+      "metadata": {
+        "description": "Location of resource (East US or West US)"
+      }
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_A4",
+      "metadata": {
+        "description": "App Tier VM Size"
+      }
+    },
+    "vmName": {
+      "type": "string",
+      "defaultValue": "testdinmyenc",
+      "metadata": {
+        "description": "Virtual machine name"
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "defaultValue": "00ahl7jrgb3m64eagnt0",
+      "metadata": {
+        "description": "Storage account name"
+      }
+    }
+  },
+  "variables": {
+   
+    "updateVmUrl": "[concat('https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/201-encrypt-running-windows-vm/updatevm-',variables('useExistingKek'),'.json')]",
+    "useExistingKek": "kek",
+
+    "extensionName": "AzureDiskEncryption",
+    "extensionVersion": "1.1",
+    "encryptionOperation": "EnableEncryption",
+    "keyEncryptionAlgorithm": "RSA-OAEP",
+    "keyVaultURL": "[concat('https://', variables('keyVaultName'), '.vault.azure.net/')]",
+    "keyVaultResourceID": "[concat(subscription().id,'/resourceGroups/',variables('keyVaultResourceGroup'),'/providers/Microsoft.KeyVault/vaults/', variables('keyVaultName'))]",
+    "keyVaultName": "dinorskey",
+    "keyVaultResourceGroup": "sql1",
+    "keyEncryptionKeyURL": "https://dinorskey.vault.azure.net/keys/softkey/ee65e15d80414416b0923f9059124902",
+    "sequenceVersion": "1.0",
+    "nicName": "mynicnwew",
+    "testPrefix": "10.0.0.0/16",
+    "testSubnet1Name": "Subnet-1",
+    "testSubnet1Prefix": "10.0.0.0/24",
+    "testSubnet2Name": "Subnet-2",
+    "testSubnet2Prefix": "10.0.1.0/24",
+    "mynicVnetID": "/subscriptions/928f4e7e-2c28-4063-a56e-6f1e6f2bb73c/resourceGroups/kube/providers/Microsoft.Network/virtualNetworks/k8s-vnet-B54A8428",
+    "mynicSubnetRef": "/subscriptions/928f4e7e-2c28-4063-a56e-6f1e6f2bb73c/resourceGroups/kube/providers/Microsoft.Network/virtualNetworks/k8s-vnet-B54A8428/subnets/k8s-subnet"
+
+
+
+  },
+  "resources": [
+    {
+      "name": "[parameters('vmName')]",
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "[parameters('resourceLocation')]",
+      "apiVersion": "2015-06-15",
+      "dependsOn": [
+        
+        "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[parameters('vmName')]",
+          "adminUsername": "[parameters('vmAdminUserName')]",
+          "adminPassword": "[parameters('vmAdminPassword')]"
+        },
+        "storageProfile": {
+          "osDisk": {
+            "name": "OSDisk",
+            "osType": "Windows",
+            "image": {
+              "uri": "https://00ahl7jrgb3m64eagnt0.blob.core.windows.net/system/Microsoft.Compute/Images/vhds/jimage-osDisk.bf84a26c-a607-474c-8d26-eee019f8a5db.vhd"
+            },
+            "vhd": {
+              "uri": "[concat('https://', parameters('storageAccountName'), '.blob.core.windows.net/vhds-os/', parameters('vmName'), '-osdisk.vhd')]"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          }
+
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicName'))]"
+            }
+          ]
+        },
+
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": "true",
+            "storageUri": "[concat('http://',parameters('storageAccountName'),'.blob.core.windows.net')]"
+          }
+        }
+      }
+    },
+
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat(parameters('vmName'),'/', variables('extensionName'))]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/',  parameters('vmName'))]"
+      ],
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publisher": "Microsoft.Azure.Security",
+        "type": "AzureDiskEncryption",
+        "typeHandlerVersion": "[variables('extensionVersion')]",
+        "autoUpgradeMinorVersion": true,
+        "forceUpdateTag": "[variables('sequenceVersion')]",
+        "settings": {
+          "AADClientID": "[parameters('aadClientID')]",
+          "KeyVaultURL": "[variables('keyVaultURL')]",
+          "KeyEncryptionKeyURL": "[variables('keyEncryptionKeyURL')]",
+          "KeyEncryptionAlgorithm": "[variables('keyEncryptionAlgorithm')]",
+          "VolumeType": "All",
+          "EncryptionOperation": "[variables('encryptionOperation')]"
+        },
+        "protectedSettings": {
+          "AADClientSecret": "[parameters('aadClientSecret')]"
+        }
+      }
+    },
+        {
+          "name": "updatevm",
+          "type": "Microsoft.Resources/deployments",
+          "apiVersion": "2015-01-01",
+          "dependsOn": [
+            "[resourceId('Microsoft.Compute/virtualMachines/extensions',  parameters('vmName'), variables('extensionName'))]"
+          ],
+          "properties": {
+            "mode": "Incremental",
+            "templateLink": {
+              "uri": "[variables('updateVmUrl')]",
+              "contentVersion": "1.0.0.0"
+            },
+            "parameters": {
+              "vmName": {
+                "value": "[parameters('vmName')]"
+              },
+              "keyVaultResourceID": {
+                "value": "[variables('keyVaultResourceID')]"
+              },
+              "keyVaultSecretUrl": {
+                "value": "[reference(resourceId('Microsoft.Compute/virtualMachines/extensions',  parameters('vmName'), variables('extensionName'))).instanceView.statuses[0].message]"
+              },
+              "keyEncryptionKeyURL": {
+                "value": "[variables('keyEncryptionKeyURL')]"
+              }
+            }
+          }
+        },
+      {
+          "name": "[variables('nicName')]",
+          "type": "Microsoft.Network/networkInterfaces",
+          "location": "[resourceGroup().location]",
+          "apiVersion": "2015-06-15",
+          "dependsOn": [
+              
+          ],
+          "tags": {
+              "displayName": "mynic"
+          },
+          "properties": {
+              "ipConfigurations": [
+                  {
+                      "name": "ipconfig1",
+                      "properties": {
+                          "privateIPAllocationMethod": "Dynamic",
+                          "subnet": {
+                              "id": "[variables('mynicSubnetRef')]"
+                          }
+                      }
+                  }
+              ]
+          }
+      }
+      ],
+      "outputs": {
+        "BitLockerKey": {
+          "type": "string",
+          "value": "[reference(resourceId('Microsoft.Compute/virtualMachines/extensions',  parameters('vmName'), variables('extensionName'))).instanceView.statuses[0].message]"
+        }
+      }   
+} 
+
